@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "lib": ["es2020"],
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": false,
+    "noPropertyAccessFromIndexSignature": true,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "experimentalDecorators": true,
+    "exactOptionalPropertyTypes": false,
+    "strictPropertyInitialization": true,
+    "typeRoots": ["./node_modules/@types"],
+    "outDir": "./build"
+  },
+  "exclude": [
+    "app/**",
+    "build/**",
+    "cdk.out",
+    "client/**"
+  ]
+}
