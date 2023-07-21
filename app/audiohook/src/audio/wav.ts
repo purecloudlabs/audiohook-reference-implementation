@@ -38,23 +38,19 @@ export class WavFileWriter {
         this.channels = channels | 0;
         if (this.format === 'PCMU') {
             this.bytesPerSample = this.channels;
-            this.header = Buffer.alloc(58);
+            this.header = Buffer.alloc(44);
             this.header.write('RIFF', 0);
             this.header.writeUInt32LE(0xffffffff, 4);
             this.header.write('WAVEfmt ', 8);
-            this.header.writeUInt32LE(16, 18);                          // chunk size
+            this.header.writeUInt32LE(16, 16);                          // chunk size
             this.header.writeUInt16LE(7, 20);                           // format = u-Law
             this.header.writeUInt16LE(this.channels, 22);               // num channels
             this.header.writeUInt32LE(this.rate, 24);                   // sample rate
             this.header.writeUInt32LE(this.rate*this.channels, 28);     // bytes per second
             this.header.writeUInt16LE(this.bytesPerSample, 32);         // block size (bytes per sample * num channels)
-            this.header.writeUInt16LE(8, 34);                           // bits per sample
-            this.header.writeUInt16LE(0, 36);                           // extension size
-            this.header.write('fact', 38);
-            this.header.writeUInt32LE(4, 42);
-            this.header.writeUInt32LE(0xffffffff, 46);
-            this.header.write('data', 50);
-            this.header.writeUInt32LE(0xffffffff, 54);
+            this.header.writeUInt16LE(8, 34);
+            this.header.write('data', 36);
+            this.header.writeUInt32LE(0xffffffff, 40);
         } else if (this.format === 'L16') {
             this.bytesPerSample = this.channels * 2;
             this.header = Buffer.alloc(44);
