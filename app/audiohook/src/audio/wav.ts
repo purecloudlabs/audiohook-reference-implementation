@@ -38,7 +38,7 @@ export class WavFileWriter {
         this.channels = channels | 0;
         if (this.format === 'PCMU') {
             this.bytesPerSample = this.channels;
-            this.header = Buffer.alloc(44);
+            this.header = Buffer.alloc(50);
             this.header.write('RIFF', 0);
             this.header.writeUInt32LE(0xffffffff, 4);
             this.header.write('WAVEfmt ', 8);
@@ -100,8 +100,8 @@ export class WavFileWriter {
             const fileEndPos = dataWriter.bytesWritten + writer.header.length;
             writer.header.writeUInt32LE(fileEndPos + pad - 8, 4);
             if (writer.format === 'PCMU') {
-                writer.header.writeUInt32LE(numSamples, 46);                // fact chunk value (number of samples)
-                writer.header.writeUInt32LE(dataWriter.bytesWritten, 54);   // data chunk size
+                writer.header.writeUInt32LE(numSamples*2, 40);              // fact chunk value (number of samples)
+                writer.header.writeUInt32LE(dataWriter.bytesWritten, 44);   // data chunk size
             } else {
                 writer.header.writeUInt32LE(dataWriter.bytesWritten, 40);   // data chunk size
             }
