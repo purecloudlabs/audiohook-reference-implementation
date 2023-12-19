@@ -99,12 +99,7 @@ export class WavFileWriter {
             const numSamples = dataWriter.bytesWritten / writer.bytesPerSample;
             const fileEndPos = dataWriter.bytesWritten + writer.header.length;
             writer.header.writeUInt32LE(fileEndPos + pad - 8, 4);
-            if (writer.format === 'PCMU') {
-                writer.header.writeUInt32LE(numSamples, 46);                // fact chunk value (number of samples)
-                writer.header.writeUInt32LE(dataWriter.bytesWritten, 54);   // data chunk size
-            } else {
-                writer.header.writeUInt32LE(dataWriter.bytesWritten, 40);   // data chunk size
-            }
+            writer.header.writeUInt32LE(dataWriter.bytesWritten, 40);   // data chunk size
 
             // Patch the header with the actual sizes and close the file
             (async () => {
