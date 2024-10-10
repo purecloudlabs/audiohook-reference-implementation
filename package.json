@@ -18,18 +18,23 @@
     "update": "ncu -t minor -u && npm install && npm run update --prefix app && npm run update --prefix client",
     "clean": "rm -r build/ ; rm -r cdk.out/ ; npm run clean --prefix app ; npm run clean --prefix client",
     "watch": "tsc -w",
-    "test": "jest",
+    "test": "jest --verbose",
     "cdk": "cdk"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.39.0",
+    "configparser": "^0.3.10",
     "constructs": "^10.1.89",
     "dotenv": "^16.0.1",
-    "source-map-support": "^0.5.21"
+    "pino": "^8.11.0",
+    "pino-pretty": "^8.1.0",
+    "source-map-support": "^0.5.21",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@types/jest": "^28.1.8",
     "@types/node": "^16.11.56",
+    "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.35.1",
     "@typescript-eslint/parser": "^5.35.1",
     "aws-cdk": "^2.39.0",

@@ -54,6 +54,7 @@ export const addAudiohookLoadTestRoute = (fastify: FastifyInstance, path: string
                 sessionId,
                 orgId,
                 correlationId,
+                conversationId,
                 position: session.position,
                 openParams
             });

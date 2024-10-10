@@ -8,6 +8,7 @@ import dynamodbPlugin from './dynamodb-plugin';
 import secretsPlugin from './secrets-plugin';
 import { addAudiohookSampleRoute } from './audiohook-sample-endpoint';
 import { addAudiohookLoadTestRoute } from './audiohook-load-test-endpoint';
+import { addAudiohookVoiceTranscriptionRoute } from './audiohook-vt-endpoint';
 
 dotenv.config();
 
@@ -37,9 +38,8 @@ server.register(websocket, {
 
 
 server.register(async (fastify: FastifyInstance) => {
-
     addAudiohookSampleRoute(fastify, '/api/v1/audiohook/ws');
-
+    addAudiohookVoiceTranscriptionRoute(fastify, '/api/v1/voicetranscription/ws');
     addAudiohookLoadTestRoute(fastify, '/api/v1/loadtest/ws');
 
 });

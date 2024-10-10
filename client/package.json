@@ -22,12 +22,13 @@
     "pino": "^8.4.2",
     "pino-pretty": "^8.1.0",
     "tdigest": "^0.1.2",
-    "tdigest": "^0.1.2",
     "uuid": "^8.3.2",
     "wav": "^1.0.2",
     "ws": "^8.8.1"
   },
   "devDependencies": {
+    "@types/bytebuffer": "^5.0.44",
+    "bytebuffer": "^5.0.1",
     "@types/node": "^16.11.56",
     "@types/uuid": "^8.3.4",
     "@types/ws": "^8.5.3",

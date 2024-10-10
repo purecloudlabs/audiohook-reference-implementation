@@ -172,6 +172,8 @@ type CmdOptions = {
     apiKey?: string;
     clientSecret?: Uint8Array;
     customConfig?: JsonObject;
+    language?: string;
+    supportedLanguages?: boolean;
     sessionCount?: number;
     maxStreamDuration?: StreamDuration;
     connectionProbe?: boolean;
@@ -189,6 +191,8 @@ new Command()
     .option('--api-key <apikey>', 'API Key value', parseApiKey)
     .option('--client-secret <base64>', 'Client secret for message signature', parseClientSecret)
     .option('--custom-config <json>', 'Stringified JSON object to be passed as "customConfig" parameter in \'open\' message', parseCustomConfig)
+    .option('--language <language>', 'Provides the language code used to test the call.')
+    .option('--supported-languages', 'Fetches the list of supported languages')
     .option('--session-count <number>', 'Number of concurrent sessions to establish to server. Default: 1', parseSessionCount)
     .option('--max-stream-duration <duration>', 'Limit duration of audio stream to specified number of seconds or as PTxS. Default: length of source', parseStreamDuration)
     .option('--connection-probe', 'Perform a connection probe as documented in protocol specification. No audio is sent unless \'max-stream-duration parameter\' provided.')
@@ -254,6 +258,8 @@ new Command()
                     dnis: '+1-800-555-6789',
                 },
                 customConfigParam: options.customConfig,
+                languageParam: options.language ?? undefined,
+                supportedLanguages: options.supportedLanguages ?? undefined,
                 createWebSocket: createClientWebSocket,
                 logger: sessionLogger,
                 authInfo: {

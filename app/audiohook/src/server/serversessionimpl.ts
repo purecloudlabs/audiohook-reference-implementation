@@ -7,6 +7,7 @@ import {
     DisconnectReason,
     ErrorMessage,
     EventEntities,
+    LanguageCode,
     MediaParameter,
     MessageDispatcher,
     OpenedParameters,
@@ -18,16 +19,18 @@ import {
     ServerMessage,
     ServerMessageBase,
     ServerMessageType,
+    SupportedLanguages,
     UpdateMessage,
+    UpdateParameters,
     Uuid,
 } from '../protocol/message';
 import {
-    isNullUuid,
     isClientMessageBase,
     isClientMessage,
-    isClientMessageType
+    isClientMessageType,
+    isNullUuid
 } from '../protocol/validators';
-import { 
+import {
     StreamDuration,
     isPromise,
     normalizeError,
@@ -49,15 +52,18 @@ import {
     OnAudioHandler,
     OnClientMessageHandler,
     OnDiscardedHandler,
+    OnErrorHandler,
     OnPausedHandler,
     OnResumedHandler,
     OnServerMessageHandler,
     OnStatisticsHandler,
+    OnUpdateHandler,
     OpenHandler,
     OpenTransactionContext,
     ServerSession,
     ServerSessionState,
     StatisticsInfo,
+    UpdateHandler,
 } from './serversession';
 
 
@@ -95,8 +101,8 @@ const sendDisconnectInState: StateToBooleanMap = {
 
 
 /**
- * Interface of methods the AudioHook ServerSession implementation requires from the WebSocket connection 
- * 
+ * Interface of methods the AudioHook ServerSession implementation requires from the WebSocket connection
+ *
  * @see createServerSession
  */
 export interface ServerWebSocket {
@@ -112,6 +118,7 @@ export type ServerSessionOptions = {
     id: Uuid;
     logger: Logger;
     timeProvider?: TimeProvider;
+    supportedLanguages?: SupportedLanguages;
 };
 
 
@@ -129,6 +136,9 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
     seq = 0;
     clientseq = 0;
     selectedMedia: Readonly<MediaParameter> | null = null;
+    language: LanguageCode | null = null;
+    sendSupportedLanguages = false;
+    supportedLanguages: SupportedLanguages | null = null;
     position: StreamDuration = StreamDuration.zero;
     startPaused = false;
     openTransactionPromise: Promise<void> | null = null;
@@ -139,15 +149,17 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
     authenticators: Authenticator[] = [];
     mediaSelectors: MediaSelector[] = [];
     openHandlers: OpenHandler[] = [];
+    updateHandlers: UpdateHandler[] = [];
     closeHandlers: CloseHandler[] = [];
     finiHandlers: FiniHandler[] = [];
 
-    private constructor({ ws, id, logger, timeProvider }: ServerSessionOptions) {
+    private constructor({ ws, id, logger, timeProvider, supportedLanguages }: ServerSessionOptions) {
         super();
         this.ws = ws;
         this.id = id;
         this.logger = logger;
         this.timeProvider = timeProvider ?? defaultTimeProvider;
+        this.supportedLanguages = supportedLanguages ?? null;
         this.lastPingTimestamp = this.timeProvider.getHighresTimestamp();
         this.registerHandlers();
         this.messageDispatch = {
@@ -193,6 +205,15 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
             this.openHandlers.push(handler);
         } else {
             throw new Error(`Cannot add open handler in state ${this.state}`);
+        }
+        return this;
+    }
+
+    addUpdateHandler(handler: UpdateHandler): this {
+        if ((this.state !== 'FINALIZING') && (this.state !== 'DISCONNECTED')) {
+            this.updateHandlers.push(handler);
+        } else {
+            throw new Error(`Cannot add update handler in state ${this.state}`);
         }
         return this;
     }
@@ -274,7 +295,11 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
                 }
             } catch (err) {
                 this.logger.error(`Error processing message: ${normalizeError(err).stack}`);
-                this.signalError('Internal server error');
+                if (err instanceof Error) {
+                    this.signalError(err.message ?? 'Internal server error');
+                } else {
+                    this.signalError('Undefined internal server error');
+                }
             }
         });
         this.ws.on('error', (error: Error) => {
@@ -342,7 +367,7 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
             } else {
                 this.logger.warn(`Server error (state: ${this.state}): ${info}`);
                 this.setState('SIGNALED-ERROR');
-                this.buildAndSendMessage('disconnect', { reason: 'error', info: 'Internal Server Error' });
+                this.buildAndSendMessage('disconnect', { reason: 'error', info: info ?? 'Internal Server Error' });
             }
         } catch (err) {
             this.logger.error(`signalError - Error signaling error: ${normalizeError(err).stack}`);
@@ -413,7 +438,6 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
                 return this.signalClientError(`Invalid Message: '${message.type}' is not a supported client message`);
             }
         }
-        this.position = StreamDuration.fromDuration(message.position);
         this.emit('clientMessage', message);
         this.messageDispatch[message.type](message as never);
     }
@@ -439,8 +463,8 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
             this.signalClientError(info);
             return;
         }
-        this.onAudioData(audioFrame);
         this.position = this.position.withAddedSamples(audioFrame.sampleCount, audioFrame.rate);
+        this.onAudioData(audioFrame);
     }
 
     onOpenMessage(message: OpenMessage): void {
@@ -463,13 +487,13 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
             get selectedMedia() {
                 return session.selectedMedia;
             },
-        
+
             setStartPaused(value: boolean) {
                 session.startPaused = value;
             },
 
             setDiscardTo(value: StreamDuration) {
-                if((discardTo === null) || (value.nanoseconds < discardTo.nanoseconds)) {
+                if ((discardTo === null) || (value.nanoseconds < discardTo.nanoseconds)) {
                     discardTo = value;
                 }
             },
@@ -478,48 +502,74 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
         /* eslint-disable @typescript-eslint/indent */
         this.openTransactionPromise = (
             this.runAuthenticators(message)
-            .then<true | void>(() => {
-                if (this.state === 'OPENING') {
-                    return this.runMediaSelectors(message);
-                } else {
-                    this.logger.info(`onOpenMessage - State changed to ${this.state} during authentication`);
-                    return true;
-                }
-            })
-            .then<true | void>((logged) => {
-                if (this.state === 'OPENING') {
-                    this.logger.info(`onOpenMessage - Selected media: ${JSON.stringify(this.selectedMedia)}`);
-                    return this.runOpenHandlers(openContext);
-                } else {
-                    if (!logged) {
-                        this.logger.info(`onOpenMessage - State changed to ${this.state} during media selection`);
+                .then<true | void>(() => {
+                    if (this.state === 'OPENING') {
+                        return this.runMediaSelectors(message);
+                    } else {
+                        this.logger.info(`onOpenMessage - State changed to ${this.state} during authentication`);
+                        return true;
                     }
-                    return true;
-                }
-            })
-            .then((logged) => {
-                if (this.state === 'OPENING') {
-                    this.logger.info('onOpenMessage - Open handlers complete, session opened');
-                    const openedParams: OpenedParameters = {
-                        media: this.selectedMedia ? [this.selectedMedia] : [],
-                        startPaused: this.startPaused
-                    };
-                    if((discardTo !== null) && (discardTo.nanoseconds > this.position.nanoseconds)) {
-                        openedParams.discardTo = discardTo.asDuration();
+                })
+                .then<true | void>((logged) => {
+                    if (this.state === 'OPENING') {
+                        this.logger.info(`onOpenMessage - Selected media: ${JSON.stringify(this.selectedMedia)}`);
+                        return this.runSupportedLanguages(message);
+                    } else {
+                        if (!logged) {
+                            this.logger.info(`onOpenMessage - State changed to ${this.state} during media selection`);
+                        }
+                        return true;
                     }
-                    this.buildAndSendMessage('opened', openedParams);
-                    this.setState('ACTIVE');
-                } else if (!logged) {
-                    this.logger.info(`onOpenMessage - State changed to ${this.state} during open handlers`);
-                }
-            })
-            .catch(err => {
-                const error = normalizeError(err);
-                this.logger.error(`onOpenMessage - Error during open transaction: ${error.stack}`);
-                this.signalError(error);
-            })
+                })
+                .then<true | void>((logged) => {
+                    if (this.state === 'OPENING') {
+                        if (this.sendSupportedLanguages) {
+                            this.logger.info(`onOpenMessage - Send supported languages: ${JSON.stringify(this.supportedLanguages)}`);
+                        }
+                        return this.runOpenHandlers(openContext);
+                    } else {
+                        if (!logged) {
+                            this.logger.info(`onOpenMessage - State changed to ${this.state} while checking if the supported languages were required`);
+                        }
+                        return true;
+                    }
+                })
+                .then((logged) => {
+                    if (this.state === 'OPENING') {
+                        this.logger.info('onOpenMessage - Open handlers complete, session opened');
+                        const openedParams: OpenedParameters = {
+                            media: this.selectedMedia ? [this.selectedMedia] : [],
+                            startPaused: this.startPaused
+                        };
+                        if ((discardTo !== null) && (discardTo.nanoseconds > this.position.nanoseconds)) {
+                            openedParams.discardTo = discardTo.asDuration();
+                        }
+                        if (this.sendSupportedLanguages) {
+                            openedParams.supportedLanguages = this.supportedLanguages ? this.supportedLanguages : [];
+                        }
+                        this.buildAndSendMessage('opened', openedParams);
+                        this.setState('ACTIVE');
+                    } else if (!logged) {
+                        this.logger.info(`onOpenMessage - State changed to ${this.state} during open handlers`);
+                    }
+                })
+                .catch(err => {
+                    const error = normalizeError(err);
+                    this.logger.error(`onOpenMessage - Error during open transaction: ${error.stack}`);
+                    this.signalError(error);
+                })
         );
         /* eslint-enable @typescript-eslint/indent */
+    }
+
+    onUpdateMessage(message: UpdateMessage): void {
+        this.logger.info(`onUpdateMessage - ${JSON.stringify(message, null, 1)}`);
+        if (this.state !== 'ACTIVE' && this.state !== 'PAUSED') {
+            this.logger.warn(`onUpdateMessage - Ignoring 'update' message in state ${this.state}`);
+            return;
+        }
+        this.runUpdateHandlers(message.parameters);
+        this.emit('update', message.parameters);
     }
 
     onCloseMessage(message: CloseMessage): void {
@@ -548,7 +598,7 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
 
     onErrorMessage(message: ErrorMessage): void {
         this.logger.warn(`onErrorMessage - ${JSON.stringify(message, null, 1)}`);
-        // TODO: Handle
+        this.emit('error', message.parameters);
     }
 
     onPingMessage(message: PingMessage): void {
@@ -568,15 +618,13 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
         this.emit('discarded', message.parameters);
     }
 
-    onUpdateMessage(message: UpdateMessage): void {
-        this.logger.info(`onUpdateMessage - ${JSON.stringify(message, null, 1)}`);
-    }
-
     onPausedMessage(message: PausedMessage): void {
         this.logger.debug(`onPausedMessage - ${JSON.stringify(message, null, 1)}`);
         if (this.state === 'ACTIVE') {
             this.setState('PAUSED');
             this.emit('paused');
+        } else {
+            this.logger.warn(`onPausedMessage - Ignoring 'pause' message in state ${this.state}`);
         }
     }
 
@@ -585,6 +633,8 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
         if (this.state === 'PAUSED') {
             this.setState('ACTIVE');
             this.emit('resumed', message.parameters);
+        } else {
+            this.logger.warn(`onResumedMessage - Ignoring 'resume' message in state ${this.state}`);
         }
     }
 
@@ -625,15 +675,22 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
             offered = await handler(this, offered, message.parameters);
         }
         if (this.state === 'OPENING') {
-            // Pick the first media format from the ones that survived the selectors' filters. 
+            // Pick the first media format from the ones that survived the selectors' filters.
             // If there weren't any media selectors, this will just pick the first offered.
             this.selectedMedia = offered[0] ?? null;
+        }
+    }
+
+    async runSupportedLanguages(message: OpenMessage): Promise<void> {
+        if (this.state === 'OPENING') {
+            this.sendSupportedLanguages = message.parameters.supportedLanguages ?? false;
         }
     }
 
     async runOpenHandlers(openContext: OpenTransactionContext): Promise<void> {
         // Run all open handlers. We allow registering of open handlers while other open handlers run.
         // So we just run through the list until the list is empty.
+        this.language = openContext.openParams.language?.toLowerCase() ?? null;
         while ((this.openHandlers.length !== 0) && (this.state === 'OPENING')) {
             // Note: we initiate all handlers in parallel and then wait for the promises to settle
             const promises: Array<PromiseLike<CloseHandler | void>> = [];
@@ -659,8 +716,16 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
                 }
             });
             if (err) {
-                throw err;  // Rethrow the last one 
+                throw err;  // Rethrow the last one
             }
+        }
+    }
+
+    // Update Handlers should run as many times as we get the update message
+    async runUpdateHandlers(updateParams: UpdateParameters | null): Promise<void> {
+        this.language = updateParams?.language?.toLowerCase() ?? null;
+        for (let i = 0; i < this.updateHandlers.length; i++) {
+            this.updateHandlers[i](this, updateParams);
         }
     }
 
@@ -717,10 +782,15 @@ class ServerSessionImpl extends EventEmitter implements ServerSession {
     override emit(eventName: 'resumed', ...args: Parameters<OmitThisParameter<OnResumedHandler>>): boolean;
     override emit(eventName: 'audio', ...args: Parameters<OmitThisParameter<OnAudioHandler>>): boolean;
     override emit(eventName: 'discarded', ...args: Parameters<OmitThisParameter<OnDiscardedHandler>>): boolean;
+    override emit(eventName: 'update', ...args: Parameters<OmitThisParameter<OnUpdateHandler>>): boolean;
+    override emit(eventName: 'error', ...args: Parameters<OmitThisParameter<OnErrorHandler>>): boolean;
     override emit(eventName: 'statistics', ...args: Parameters<OmitThisParameter<OnStatisticsHandler>>): boolean;
     override emit(eventName: 'serverMessage', ...args: Parameters<OmitThisParameter<OnServerMessageHandler>>): boolean;
     override emit(eventName: 'clientMessage', ...args: Parameters<OmitThisParameter<OnClientMessageHandler>>): boolean;
     override emit(eventName: string, ...args: unknown[]): boolean {
-        return super.emit(eventName, ...args);
+        if (this.listenerCount(eventName) > 0) {
+            return super.emit(eventName, ...args);
+        }
+        return false;
     }
 }

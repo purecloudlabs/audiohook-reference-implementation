@@ -203,6 +203,7 @@ export class WavFileWriter {
 
 export interface WavReader {
     readonly format: AudioFormat;
+    readPos: number;
     readonly rate: SampleRate;
     readonly channels: number;
     readonly totalSamples: number;
@@ -214,7 +215,7 @@ export interface WavReader {
 class WavFileReader implements WavReader {
     private file: FileHandle;
     private dataStartPos: number;
-    private readPos: number;
+    readPos: number;
     private dataChunkSize: number;
     private bytesPerSample: number;
     private maxFrameSamples: number;

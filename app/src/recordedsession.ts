@@ -60,6 +60,7 @@ const logLevelMap: {
     'info':  30,
     'debug': 20,
     'trace': 10,
+    'silent': 0,
 } as const;
 
 const logLevelNames = Object.entries(logLevelMap).sort(([,a], [, b]) => (a - b)).map(([k]) => k as LogLevel);

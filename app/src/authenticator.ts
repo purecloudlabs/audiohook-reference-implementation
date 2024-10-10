@@ -84,7 +84,7 @@ const verifyRequestSignatureAux = async ({ request, logger }: VerifyRequestSigna
             if(keyId !== apiKey) {
                 return withFailure('PRECONDITION', 'X-API-KEY header field and signature keyid mismatch');
             }
-            const secret = await request.server.secrets.lookupSecretForKeyId(keyId);
+            const secret = await request.server.secrets.lookupSecretForKeyId(keyId, logger);
             if(secret) {
                 // Note: if no secret is defined for the key but the request is signed, we get here with an Uint8Array of length 0.
                 // The signature check will then fail as the key is wrong. Technically, it means we verify the signature with a

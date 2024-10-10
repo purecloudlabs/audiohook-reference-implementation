@@ -2,6 +2,7 @@ import {
     Duration,
     JsonObject,
     JsonValue,
+    LanguageCode,
     MediaChannel,
     MediaChannels,
     MediaFormat,
@@ -10,6 +11,7 @@ import {
     MediaRate,
     MediaType,
     SequenceNumber,
+    SupportedLanguages,
     Uuid,
 } from './core';
 import {
@@ -85,12 +87,12 @@ function makeValidator<T>(required: RequiredParameterValidator<T>, optional: Opt
 }
 
 function makeStringUnionValidator<T extends string>(set: {[K in T]: true}): JsonValueValidatorFunc<T> {
-    // Note: This is an unfortunate hack to enforce we have a list of string union members. 
-    // Ideal would be if TypeScript supported reifying unions to values (array or tuples). 
+    // Note: This is an unfortunate hack to enforce we have a list of string union members.
+    // Ideal would be if TypeScript supported reifying unions to values (array or tuples).
     // As the order of union members is undefined, creating a union-to-tuple type and then
-    // constraining a tuple value on that doesn't work reliably either. 
+    // constraining a tuple value on that doesn't work reliably either.
     // The only approach I found to work is enforcing an exact match between a set of values
-    // and a union type is using an object literal. 
+    // and a union type is using an object literal.
     // We could allow values in the `message.ts` file instead of just types, then we could do something like:
     // ```
     // const myStringEnumValues = ['foo', 'bar', 'baz'] as const;
@@ -119,7 +121,7 @@ export const isJsonObject = (value: unknown): value is JsonObject => (
     // Note: We assume that the keys of the object are strings, which is probably a safe assumption if the value comes from a JSON.parse().
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((value as any)?.constructor === Object)
-);  
+);
 
 export const isString = (value: JsonValue): value is string => (
     typeof value === 'string'
@@ -184,6 +186,20 @@ export const isMediaParameters = (value: JsonValue): value is MediaParameters =>
     Array.isArray(value) && value.every(v => isMediaParameter(v))
 );
 
+export const languageCodeRegex = /^[a-z]{2,3}-[A-Za-z]{2,3}$/;
+
+export const isLanguageCode = (value: JsonValue): value is LanguageCode => (
+    isString(value) && languageCodeRegex.test(value)
+);
+
+export const isValidLanguageCode = (value: JsonValue, supportedLanguages: SupportedLanguages): value is LanguageCode => (
+    isString(value) && supportedLanguages.includes(value)
+);
+
+export const isSupportedLanguagesParameters = (value: JsonValue): value is SupportedLanguages => (
+    Array.isArray(value) && value.every(v => isString(v))
+);
+
 export const isParticipant = wrapForJsonValue(
     makeValidator<Participant>(
         {
@@ -242,7 +258,7 @@ export const isClosedParameters = makeValidator<ClosedParameters>(
     {},
     {}
 );
-    
+
 export const isDisconnectReason = makeStringUnionValidator<DisconnectReason>({ 'error': true, 'unauthorized': true, 'completed': true });
 
 export const isDisconnectParameters = makeValidator<DisconnectParameters>(
@@ -283,14 +299,16 @@ export const isErrorParameters = makeValidator<ErrorParameters>(
 
 export const isOpenParameters = makeValidator<OpenParameters>(
     {
-        organizationId: isUuid, 
+        organizationId: isUuid,
         conversationId: isUuid,
         participant: isParticipant,
         media: isMediaParameters
     },
     {
+        language: isLanguageCode,
+        supportedLanguages: isBoolean,
         continuedSessions: isContinuedSessions,
-        customConfig: isJsonObject       
+        customConfig: isJsonObject
     }
 );
 
@@ -301,7 +319,8 @@ export const isOpenedParameters = makeValidator<OpenedParameters>(
     },
     {
         discardTo: isDuration,
-        startPaused: isBoolean
+        startPaused: isBoolean,
+        supportedLanguages: isSupportedLanguagesParameters
     }
 );
 
@@ -334,12 +353,12 @@ export const isReconnectParameters = makeValidator<ReconnectParameters>(
         info: isString
     }
 );
-    
+
 export const isResumeParameters = makeValidator<ResumeParameters>(
     {},
     {}
 );
-    
+
 export const isResumedParameters = makeValidator<ResumedParameters>(
     {
         start: isDuration,
@@ -349,7 +368,9 @@ export const isResumedParameters = makeValidator<ResumedParameters>(
 );
 
 export const isUpdateParameters = makeValidator<UpdateParameters>(
-    {},
+    {
+        language: isLanguageCode
+    },
     {}
 );
 
@@ -363,9 +384,9 @@ export const isUpdatedParameters = makeValidator<UpdatedParameters>(
 export const isMessageBase = (msg: unknown): msg is MessageBase & JsonObject => (
     isJsonObject(msg) &&
     (msg['version'] === '2') &&
-    isUuid(msg['id']) && 
-    isString(msg['type']) && 
-    isSequenceNumber(msg['seq']) && 
+    isUuid(msg['id']) &&
+    isString(msg['type']) &&
+    isSequenceNumber(msg['seq']) &&
     isJsonObject(msg['parameters'])
 );
 
@@ -383,7 +404,7 @@ export const isServerMessageBase = (msg: unknown): msg is ServerMessageBase & Js
 
 
 const clientMessageChecker: {
-    readonly [key in ClientMessage['type']]: (params: JsonObject) => boolean 
+    readonly [key in ClientMessage['type']]: (params: JsonObject) => boolean
 } = {
     close:          isCloseParameters,
     discarded:      isDiscardedParameters,
@@ -397,7 +418,7 @@ const clientMessageChecker: {
 
 
 const serverMessageChecker: {
-    readonly [key in ServerMessage['type']]: (params: JsonObject) => boolean 
+    readonly [key in ServerMessage['type']]: (params: JsonObject) => boolean
 } = {
     closed:         isClosedParameters,
     disconnect:     isDisconnectParameters,

@@ -2,6 +2,8 @@ import {
     Duration,
     EmptyObject,
     JsonObject,
+    LanguageCode,
+    SupportedLanguages,
     MediaParameters,
     SequenceNumber,
     Uuid,
@@ -55,13 +57,13 @@ export type DisconnectParameters = {
     info?: string;
 };
 
-export type ErrorCode = 
+export type ErrorCode =
     | 400
     | 405
     | 408
-    | 409 
-    | 413 
-    | 415 
+    | 409
+    | 413
+    | 415
     | 429
     | 500
     | 503;
@@ -97,6 +99,8 @@ export type OpenParameters = {
     conversationId: Uuid;
     participant: Participant;
     media: MediaParameters;
+    language?: LanguageCode;
+    supportedLanguages?: boolean;
     continuedSessions?: ContinuedSessions;
     customConfig?: JsonObject;
 };
@@ -105,6 +109,7 @@ export type OpenedParameters = {
     media: MediaParameters;
     discardTo?: Duration;
     startPaused?: boolean;
+    supportedLanguages?: SupportedLanguages;
 }
 
 
@@ -134,7 +139,9 @@ export type ResumedParameters = {
 };
 
 
-export type UpdateParameters = EmptyObject;
+export type UpdateParameters = {
+    language: LanguageCode
+};
 
 
 export type UpdatedParameters = EmptyObject;
