@@ -8,6 +8,7 @@ import {
     UpdateableItems,
     PrimaryKey,
     GSI1Key,
+    GSI2Key,
     TypedAttributeValue,
     makeUpdateItemCommand,
 } from './dynamodb-utils';
@@ -27,8 +28,8 @@ const dataTableName = process.env['DYNAMODB_TABLE_NAME'] ?? null;
 const dataItemsTtl = 24*3600;  // Expire items after a day
 
 const makeTtlAttributeValue = (now?: Date): AttributeValue.NMember => {
-    return { 
-        N: Math.ceil((now?.getTime() ?? Date.now())/1000 + dataItemsTtl).toFixed(0) 
+    return {
+        N: Math.ceil((now?.getTime() ?? Date.now())/1000 + dataItemsTtl).toFixed(0)
     };
 };
 
@@ -36,7 +37,7 @@ const makeTtlAttributeValue = (now?: Date): AttributeValue.NMember => {
 //
 // teststatus
 // ----------
-// 
+//
 // PK: SESSION#{sessionId}
 // SK: TESTSTATUS
 // type: <string: "teststatus">
@@ -54,6 +55,7 @@ const makeTtlAttributeValue = (now?: Date): AttributeValue.NMember => {
 
 type TestStatusItemKey = PrimaryKey<`SESSION#${Uuid}`, 'TYPE#teststatus'>;
 type TestStatusItemGSI1Key = GSI1Key<`CORRELATION#${Uuid}`, `TS#${string}`>;
+type TestStatusItemGSI2Key = GSI2Key<`ORGID#${Uuid}`, `TS#${string}`>;
 type TestStatusItemData = {
     readonly createdAt: TypedAttributeValue<string>,
     readonly type: TypedAttributeValue<string>,
@@ -67,7 +69,7 @@ type TestStatusItemData = {
     ttl: TypedAttributeValue<number>,
 };
 
-type TestStatusItem = TestStatusItemKey & TestStatusItemGSI1Key & TestStatusItemData;
+type TestStatusItem = TestStatusItemKey & TestStatusItemGSI1Key & TestStatusItemGSI2Key & TestStatusItemData;
 
 
 export interface TestStatusDataItem {
@@ -78,7 +80,7 @@ export interface TestStatusDataItem {
 
 class TestStatusDataItemImpl implements TestStatusDataItem {
     constructor(
-        private readonly client: DynamoDBClient, 
+        private readonly client: DynamoDBClient,
         private readonly table: string,
         private readonly key: TestStatusItemKey
     ) {
@@ -102,8 +104,10 @@ class TestStatusDataItemImpl implements TestStatusDataItem {
             state: { S: 'open' },
             openParams: { S: JSON.stringify(params.openParams) },
             ttl: makeTtlAttributeValue(now),
-            GSI1PK: { S: `CORRELATION#${params.correlationId}` },
+            GSI1PK: { S: `CORRELATION#${params.conversationId}` },
             GSI1SK: { S: `TS#${timestamp}` },
+            GSI2PK: { S: `ORGID#${params.orgId}` },
+            GSI2SK: { S: `TS#${timestamp}` },
         };
 
         const putCommand = new PutItemCommand({
@@ -111,7 +115,7 @@ class TestStatusDataItemImpl implements TestStatusDataItem {
             Item: item,
             ConditionExpression: 'attribute_not_exists(PK)'
         });
-    
+
         await client.send(putCommand);
         return new TestStatusDataItemImpl(client, table, key);
     }
@@ -127,7 +131,7 @@ class TestStatusDataItemImpl implements TestStatusDataItem {
         await this.client.send(updateCommand);
     }
 
-    async updateStatus(position: StreamDuration, state: string): Promise<void> {    
+    async updateStatus(position: StreamDuration, state: string): Promise<void> {
         await this._updateAux(position, state);
     }
 
@@ -142,6 +146,7 @@ export type CreateTestStatusItemParams = {
     orgId: string;
     sessionId: string;
     correlationId: string;
+    conversationId: string;
     openParams: OpenParameters;
     position: StreamDuration;
 };

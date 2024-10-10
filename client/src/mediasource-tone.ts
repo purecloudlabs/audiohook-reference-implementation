@@ -32,10 +32,10 @@ class MediaSourceTone1kHz extends EventEmitter implements MediaSource {
     private frameDurationMs: number;
     private readonly sampleEndPos: number;
 
-    constructor(maxDuration?: StreamDuration) {
+    constructor(maxDuration?: StreamDuration, customMedia?: MediaParameters) {
         super();
         const channels: MediaChannels[] = [['external', 'internal'], ['external'], ['internal']];
-        this.offeredMedia = channels.map(channels => ({ type: 'audio', format: 'PCMU', channels, rate: this.sampleRate }));
+        this.offeredMedia = (customMedia) ? customMedia : channels.map(channels => ({ type: 'audio', format: 'PCMU', channels, rate: this.sampleRate }));
         this.frameDurationMs = toneFrameDurationMs;
         this.sampleEndPos = Math.trunc((maxDuration?.seconds ?? 7*24*3600) * this.sampleRate);
     }
@@ -166,6 +166,6 @@ class MediaSourceTone1kHz extends EventEmitter implements MediaSource {
     }
 }
 
-export const createToneMediaSource = (maxDuration?: StreamDuration): MediaSource => {
-    return new MediaSourceTone1kHz(maxDuration);
+export const createToneMediaSource = (maxDuration?: StreamDuration, customMedia?: MediaParameters): MediaSource => {
+    return new MediaSourceTone1kHz(maxDuration, customMedia);
 };

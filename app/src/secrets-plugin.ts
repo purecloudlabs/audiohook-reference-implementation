@@ -1,3 +1,4 @@
+import { Logger } from '../audiohook';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
 import {
@@ -12,7 +13,7 @@ import {
 
 
 export interface Secrets {
-    lookupSecretForKeyId(keyId: string): Promise<Uint8Array | null>;
+    lookupSecretForKeyId(keyId: string, logger?: Logger): Promise<Uint8Array | null>;
 }
 
 declare module 'fastify' {
@@ -54,7 +55,7 @@ class SecretsCache implements Secrets {
         return res;
     }
 
-    async lookupSecretForKeyId(keyId: string): Promise<Uint8Array | null> {
+    async lookupSecretForKeyId(keyId: string, logger?: Logger): Promise<Uint8Array | null> {
         let secret = null;
         if(this.secretsClient) {
             const now = Date.now();

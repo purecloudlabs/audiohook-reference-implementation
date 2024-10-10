@@ -3,7 +3,9 @@
 ## Introduction
 
 This repo contains code to showcase a simple service that implements the [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook).
-The service is implemented as container hosted on [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/userguide/what-is-fargate.html) and is written in [TypeScript](https://www.typescriptlang.org/) using the [Fastify](https://www.fastify.io/) framework. 
+The service is implemented as container hosted on [AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/userguide/what-is-fargate.html) and is written in [TypeScript](https://www.typescriptlang.org/) using the [Fastify](https://www.fastify.io/) framework.
+
+This is an internal clone of the corresponding public [audiohook-reference-implementation](https://github.com/purecloudlabs/audiohook-reference-implementation) Github repository. Changes are first approved here before being pushed to Github. In this way, both repositories must always be kept in sync.
 
 > **IMPORTANT**
 > 
@@ -36,7 +38,7 @@ Clone repository and fetch submodules (structured field test data used as part o
 git clone --recurse-submodules <repository>
 ```
 
-Change into `audiohook-fargate` directory and run:
+Change into the `audiohook-reference-implementation` directory and run:
 
 ```
 npm run setup
@@ -115,14 +117,14 @@ This creates a listener on localhost port 3000 and stores the recordings in the 
 
 The following Environment variables can be set/passed to control the server:
 
-| Name | Description |
-| ---- | ---------- |
-| `SERVERPORT` | Port on which server listens. Default: 3000 |
-| `SERVERHOST` | Interface on which the server listens. Default: 127.0.0.1 |
-| `LOG_ROOT_DIR` | Directory where to store the recordings. Default: current working directory. |
-| `RECORDING_S3_BUCKET` | Name of S3 bucket to which the recordings are uploaded (and then deleted from `LOG_ROOT_DIR` if successful). In order for this upload to work, the appropriate AWS environment variables must be set (e.g. access keys or named profile reference). | 
-| `SECRET_NAME_OR_ARN` | Optional ARN or name of the Amazon Secrets Manager secret to query for API key to secrets mappings. |
-| `STATIC_API_KEY_MAP` | Optional string value that represent a JSON encoded object of name/value pairs, where the name is the API Key and the value the client secret. This is the same representation as stored in Amazon Secrets Manager, but allows hard-coding API keys/secrets without having to use the secrets manager. |
+| Name                  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SERVERPORT`          | Port on which server listens. Default: 3000                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `SERVERHOST`          | Interface on which the server listens. Default: 127.0.0.1                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `LOG_ROOT_DIR`        | Directory where to store the recordings. Default: current working directory.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `RECORDING_S3_BUCKET` | Name of S3 bucket to which the recordings are uploaded (and then deleted from `LOG_ROOT_DIR` if successful). In order for this upload to work, the appropriate AWS environment variables must be set (e.g. access keys or named profile reference).                                                                                                                                                                                                                                                                       | 
+| `SECRET_NAME_OR_ARN`  | Optional ARN or name of the Amazon Secrets Manager secret to query for API key to secrets mappings.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `STATIC_API_KEY_MAP`  | Optional string value that represent a JSON encoded object of name/value pairs, where the name is the API Key and the value the client secret. This is the same representation as stored in Amazon Secrets Manager, but allows hard-coding API keys/secrets without having to use the secrets manager. It is mandatory if running the server locally directly (without a docker container).</p>``` export STATIC_API_KEY_MAP="{\"SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh\":\"TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU=\"}"``` |
 
 To run the client against the local server, see [Test Client](#test-client) section above, substituting the `wss://audiohook.example.com/api/v1/audiohook/ws` with `ws://localhost:3000/api/v1/audiohook/ws`.
 
@@ -159,3 +161,71 @@ The `EventEntityDataAgentAssist` type represents the data for an assistance even
 > A caller or agent utterance should be included only once. The client maintains history. Do not (re-)send all utterances in the `transcripts` property. Utterances can be sent in isolation (with no suggestion) or together. If the article queries may take some time, send the utterances early for a better user experience. 
 
 The `./app/src/agentassist-hack.ts` file shows how to compose and send the event messages. It implements a quick-and-dirty sequencer that sends an utterance about 2 seconds after start of the session and then alternates every approximately 12 seconds dummy FAQ or article suggestions. 
+
+
+## Supported dialects
+
+The following dialects are currently supported:
+
+| Language | Language Code |
+| ---- | ---------- |
+| English (United States) | `en-us` |
+| English (Australia) | `en-au` |
+| English (Great Britain) | `en-gb` |
+| English (India) | `en-in` |
+| English (South Africa) | `en-sa` |
+| French (Canada) | `fr-ca` |
+| French (France) | `fr-fr` |
+| Portuguese (Brazil) | `pt-BR` |
+| Chinese (Simplified - People's Republic of China) | `zh-cn` |
+| Chinese (Mandarin) | `cmn-cn` |
+| Bulgarian (Bulgaria) | `bg-bg` |
+| Modern Greek (Greece) | `el-gr` |
+
+
+## Running the Test Suite
+
+The purpose of the test suite is to evaluate a few common scenarios against your Audiohook server.
+
+It is a good indication that you server is properly following the Audiohook protocol specification 
+if these tests are passing when running against it, but it is not guaranteed that it is 100% compliant
+with the spec because the test suite can't cover all possible scenarios.
+
+It is highly recommended to run these tests before you try it using Genesys Cloud.
+
+To run the test suite, you must set the following values in the `testconfig.cfg` file located in the root of the project:
+
+| Name                     | Description                                                                      |
+|--------------------------|----------------------------------------------------------------------------------|
+| `url`                    | The URI of your server against which the tests will run                          |
+| `apiKey`                 | A string that identifies the client                                              |
+| `clientSecret`           | This string will be used to authenticate the connection                          |
+| `customConfig`           | A json formated string that will be used in all test cases                       |
+| `language`               | The language code used by all test cases                                         |
+| `singleChannel`          | Set this to true in case your server supports single (or mono) channel streams   |  
+| `doubleChannel`          | Set this to true in case your server supports double (or stereo) channel streams | 
+| `transcriptionConnector` | Set this to true in case your server supports the Transcript Connector extension |  
+
+```
+[EndPoint]
+url=<SERVER_URI>
+
+[Authentication]
+apiKey=<API_KEY>
+clientSecret=<CLIENT_SECRET>
+
+[OpenParameters]
+customConfig={}
+language=en-US
+
+[Features]
+singleChannel=true|false
+audioHookMonitor=true|false
+transcriptionConnector=true|false
+```
+
+After setting these values, simply run the following from the root of the project:
+
+```
+npm run test
+```

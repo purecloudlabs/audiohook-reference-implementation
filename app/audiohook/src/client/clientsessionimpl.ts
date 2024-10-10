@@ -18,13 +18,16 @@ import {
     ErrorCode,
     EventMessage,
     JsonObject,
+    LanguageCode,
     MediaParameter,
     MediaParameters,
     MessageDispatcher,
     OpenedMessage,
     OpenParameters,
     Participant,
+    PausedMessage,
     PauseMessage,
+    PingMessage,
     PongMessage,
     ReconnectMessage,
     ResumeMessage,
@@ -53,7 +56,14 @@ import {
 import {
     MediaSource
 } from './mediasource';
-
+import {
+    EventEntityDataTranscript
+} from '../protocol/entities-transcript';
+import {
+    Duration,
+} from '../protocol/core';
+import '../protocol/entities-transcript';
+ 
 /**
  * Interface of methods the AudioHook ClientSession implementation requires from the WebSocket connection 
  */
@@ -97,6 +107,8 @@ export type PartialOpenParameters = {
     participant?: Participant;
     media: MediaParameters;
     customConfig?: JsonObject;
+    language?: LanguageCode;
+    supportedLanguages?: boolean;
 };
 
 export type OpenParameterProvider = (session: ClientSession, openParams: PartialOpenParameters) => MaybePromise<OpenParameters>;
@@ -110,6 +122,8 @@ export type ClientSessionOptions = {
     conversationId?: Uuid;
     participant?: Participant;
     customConfigParam?: JsonObject;
+    languageParam?: LanguageCode;
+    supportedLanguages?: boolean;
     createWebSocket: ClientWebSocketFactory;
     openParameterProvider?: OpenParameterProvider;
     authInfo: AuthInfo;
@@ -118,7 +132,7 @@ export type ClientSessionOptions = {
     openTimeout?: number;
     closeTimeout?: number;
     pingInterval?: number;
-    initialPingDelay?: number
+    initialPingDelay?: number;
 };
 
 export const createClientSession = (options: ClientSessionOptions): ClientSession => {
@@ -135,6 +149,15 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
     readonly id: Uuid;
     readonly organizationId: string;
     state: ClientSessionState;
+    openedMsg: OpenedMessage | undefined;
+    closedMsg: ClosedMessage | undefined;
+    pausedMsg: PausedMessage | undefined;
+    pingMsg: PingMessage | undefined;
+    pongMsg: PongMessage | undefined;
+    transcripts: EventEntityDataTranscript[];
+
+    seq = 0;
+    serverseq = 0;
 
     private readonly ws: ClientWebSocket;
     private readonly logger: Logger;
@@ -146,8 +169,6 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
     private pingTimerInterval: TimerSubscription | null = null;
     private openTimer: TimerSubscription | null = null;
     private closeTimer: TimerSubscription | null = null;
-    private seq = 0;
-    private serverseq = 0;
     private closeFinal: Array<{ resolve: () => void, reject: (error: Error) => void }> = [];
     private mediaSource: MediaSource;
     private pendingPing: { timestamp: bigint, seq: number } | null = null;
@@ -162,6 +183,11 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
         this.mediaSource = options.mediaSource;
         this.timeProvider = options.timeProvider ?? defaultTimeProvider;
         this.state = 'CONNECTING';
+        this.openedMsg = undefined;
+        this.closedMsg = undefined;
+        this.pingMsg = undefined;
+        this.pongMsg = undefined;
+        this.transcripts = [];
         const ws = this.options.createWebSocket({
             uri: options.uri,
             organizationId: this.organizationId,
@@ -254,6 +280,51 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
         });
     }
 
+    pinging(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.sendPing();
+            resolve();
+        });
+    }
+
+    erroring(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.sendErrorMessage(400, 'tough stuff');
+            resolve();
+        });
+    }
+
+    updating(new_lang: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.sendUpdateMessage(new_lang);
+            resolve();
+        });
+    }
+
+    discarding(startTime: Duration, durationTime: Duration): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.sendMessage(this.buildMessage('discarded', { start: startTime, discarded: durationTime }));
+            resolve();
+        });
+    }
+
+    pausing(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.mediaSource.pause();
+            const toSend = this.buildMessage('paused', {});
+            this.sendMessage(toSend);
+            this.pausedMsg = toSend;
+            resolve();
+        });
+    }
+
+    resuming(start: Duration, discarded: Duration): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.mediaSource.resume();
+            resolve();
+        });
+    }
+
     private initiateClose(reason: CloseReason) {
         if (!this.isClosing && (this.state !== 'CLOSED') && (this.state !== 'DISCONNECTED')) {
             this.state = reason === 'error' ? 'CLOSING-ERROR' : 'CLOSING';
@@ -333,6 +404,9 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
             } else {
                 const msg = this.buildMessage('ping', this.lastPingPongTime ? { rtt: StreamDuration.fromNanoseconds(this.lastPingPongTime).asDuration() } : {});
                 this.pendingPing = { timestamp: this.timeProvider.getHighresTimestamp(), seq: msg.seq };
+                if (this.pingTimerInitial) {
+                    this.pingMsg = msg;
+                }
                 this.sendMessage(msg);
             }
         } else {
@@ -342,6 +416,10 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
 
     private sendErrorMessage(code: ErrorCode, message: string): void {
         this.sendMessage(this.buildMessage('error', { code, message }));
+    }
+
+    private sendUpdateMessage(new_lang: string): void {
+        this.sendMessage(this.buildMessage('update', { 'language' : new_lang }));
     }
 
     private sendUnexpectedMessageError(msg: ServerMessage): void {
@@ -392,7 +470,7 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
                 }
             }
         };
-
+        
         if(this.options.openParameterProvider) {
             const result = this.options.openParameterProvider(this, {
                 organizationId: this.organizationId,
@@ -400,6 +478,8 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
                 participant: this.options.participant,
                 media: this.mediaSource.offeredMedia,
                 customConfig: this.options.customConfigParam,
+                language: this.options.languageParam,
+                supportedLanguages: this.options.supportedLanguages
             });
             if(isPromise(result)) {
                 result.then(params => {
@@ -423,6 +503,8 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
                 },
                 media: this.mediaSource.offeredMedia,
                 customConfig: this.options.customConfigParam,
+                language: this.options.languageParam,
+                supportedLanguages: this.options.supportedLanguages
             });
         }
     }
@@ -472,8 +554,10 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
         this.messageDispatch[message.type](message as never);
     }
 
+    
     onClosedMessage(msg: ClosedMessage): void {
         this.logger.debug(`onClosedMessage - state=${this.state}, Message: ${JSON.stringify(msg, null, 1)}`);
+        this.closedMsg = msg;
         if(this.isClosing) {
             this.logger.info(`onClosedMessage - Session closed (state: ${this.state})`);
             this.closeTimer = this.closeTimer?.cancel() ?? null;
@@ -494,6 +578,9 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
 
     onEventMessage(msg: EventMessage): void {
         this.logger.debug(`onEventMessage - state=${this.state}, Message}: ${JSON.stringify(msg, null, 1)}`);
+        if(msg.parameters['entities'][0].type === 'transcript') {
+            this.transcripts.push(msg.parameters['entities'][0].data as EventEntityDataTranscript);
+        }
         if(!this.emit('event', msg.parameters)) {
             this.logger.info(`onEventMessage - Event message (state: ${this.state}), no listener. Parameters: ${JSON.stringify(msg.parameters, null, 1)}`);
         }
@@ -506,6 +593,7 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
         } else {
             this.logger.info(`onOpenedMessage - Session open! Parameters: ${JSON.stringify(msg.parameters)}`);
             this.state = 'OPEN';
+            this.openedMsg = msg;
             this.openTimer = this.openTimer?.cancel() ?? null;
             if (msg.parameters.media.length > 1) {
                 this.signalFatalError(400, 'More than one media selected');
@@ -538,6 +626,9 @@ class ClientSessionImpl extends EventEmitter implements ClientSession {
     }
 
     onPongMessage(msg: PongMessage): void {
+        if(this.pongMsg === undefined) {
+            this.pongMsg = msg;
+        }
         const pongReceivedTime = this.timeProvider.getHighresTimestamp();
         if (!this.pendingPing) {
             this.logger.warn(`onPongMessage - Pong received without outstanding ping. ${JSON.stringify(msg, null, 1)}`);

@@ -29,7 +29,7 @@ class MediaSourceWav extends EventEmitter implements MediaSource {
     state: MediaSourceState = 'PREPARING';
     private readonly reader: WavReader;
     private readonly sampleRate: MediaRate;
-    private readonly sampleEndPos: number;
+    private sampleEndPos: number;
     private samplePos = 0;
     private pauseStartPos = 0;
     private audioTimer: NodeJS.Timeout | null = null;
@@ -124,6 +124,7 @@ class MediaSourceWav extends EventEmitter implements MediaSource {
         };
 
         const handler = () => {
+            if(this.state=='PAUSED') return;
             const read = Math.max(0, Math.min(samplesPerFrame, this.sampleEndPos-this.samplePos));
             this.reader.readNext(read)
                 .then(data => {
@@ -144,7 +145,7 @@ class MediaSourceWav extends EventEmitter implements MediaSource {
                         }
                         this.samplePos += srcFrame.sampleCount;
                         if(this.samplePos >= this.sampleEndPos) {
-                            this.streamEnd();
+                            this.streamEnd(); // ends up here if we dont add pause time to runtime
                         }
                     } else {
                         this.streamEnd();
@@ -186,7 +187,9 @@ class MediaSourceWav extends EventEmitter implements MediaSource {
     resume(): void {
         if(this.state === 'PAUSED') {
             this.state = 'STREAMING';
-            this.emit('resumed', this.position, StreamDuration.fromSamples(this.samplePos - this.pauseStartPos, this.sampleRate));
+            let tmp = this.samplePos - this.pauseStartPos;
+            this.samplePos = this.pauseStartPos;
+            this.emit('resumed', this.position, StreamDuration.fromSamples(tmp, this.sampleRate));
         } else if(this.state === 'STREAMING') {
             this.emit('resumed', this.position, StreamDuration.zero);
         } else {

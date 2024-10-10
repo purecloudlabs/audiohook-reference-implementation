@@ -1,0 +1,7 @@
+**/._DS_Store
+**/.gitignore
+.env
+.vscode
+cdk.out/
+tests/
+build/

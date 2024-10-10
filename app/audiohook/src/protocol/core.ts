@@ -36,6 +36,10 @@ export type MediaParameter = {
 
 export type MediaParameters = MediaParameter[];
 
+export type LanguageCode = string;
+
+export type SupportedLanguages = LanguageCode[];
+
 export type EventEntityBase<T extends string, D extends JsonValue> = {
     type: T;
     data: D;

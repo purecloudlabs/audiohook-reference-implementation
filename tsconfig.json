@@ -15,6 +15,7 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": false,
     "noPropertyAccessFromIndexSignature": true,
+    "esModuleInterop": true,
     "inlineSourceMap": true,
     "inlineSources": true,
     "experimentalDecorators": true,
