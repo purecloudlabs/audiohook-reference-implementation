@@ -288,7 +288,7 @@ const transcriptValidations = (client: ClientSession, transcript_info: Array<Map
             return;
         }
         expect(value).fieldToBePresent('id',`EventEntityDataTranscript at transcripts[${transcript_index}]`);
-        expect(value).fieldToBePresent('channel',`EventEntityDataTranscript at transcripts[${transcript_index}]`);
+        expect(value).fieldToBePresent('channelId',`EventEntityDataTranscript at transcripts[${transcript_index}]`);
         expect(value).fieldToBePresent('offset',`EventEntityDataTranscript at transcripts[${transcript_index}]`);
         expect(value).fieldToBePresent('duration',`EventEntityDataTranscript at transcripts[${transcript_index}]`);
         const offset = parseDuration(value.offset!);

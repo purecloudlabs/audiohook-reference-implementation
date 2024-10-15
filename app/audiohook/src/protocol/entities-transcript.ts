@@ -2,7 +2,7 @@ import {
     Duration,
     EventEntityBase,
     LanguageCode,
-    MediaChannel,
+    MediaChannelId,
     Uuid,
 } from './core';
 
@@ -10,7 +10,7 @@ export type EventEntityTranscript = EventEntityBase<'transcript', EventEntityDat
 
 export type EventEntityDataTranscript = {
     id: Uuid;
-    channel: MediaChannel;
+    channelId: MediaChannelId;
     isFinal: boolean;
     offset?: Duration;
     duration?: Duration;

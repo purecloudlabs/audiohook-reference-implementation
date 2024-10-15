@@ -43,6 +43,7 @@ export type AudioParameter<C extends string, F extends AudioFormat = AudioFormat
 export type MonoChannelView<C extends string, F extends AudioFormat = AudioFormat, R extends SampleRate = SampleRate> = {
     readonly rate: R;
     readonly channel: C;
+    readonly channelId: number;
 } & TypedAudioSampleData<F>;
 
 export type MultiChannelView<C extends string, F extends AudioFormat = AudioFormat, R extends SampleRate = SampleRate> = {
@@ -188,9 +189,9 @@ class AudioFrameImpl<
         if (stride === 1) {
             // The multi-channel entry is already a single channel, we don't have to de-interleave.
             if (src.format === 'PCMU') {
-                return chan.PCMU = { channel, rate: src.rate, format: src.format, data: src.data };
+                return chan.PCMU = { channel, channelId: 0, rate: src.rate, format: src.format, data: src.data };
             } else {
-                return chan.L16 = { channel, rate: src.rate, format: src.format, data: src.data };
+                return chan.L16 = { channel, channelId: 0, rate: src.rate, format: src.format, data: src.data };
             }
         } else {
             // It's actually multiple channels, de-interleave starting at 'offs' with 'stride'
@@ -202,7 +203,7 @@ class AudioFrameImpl<
                 for (let i = 0; i !== size; ++i, s += stride) {
                     data[i] = sd[s];
                 }
-                return chan.PCMU = { channel, rate: src.rate, format: src.format, data };
+                return chan.PCMU = { channel, channelId: offs, rate: src.rate, format: src.format, data };
             } else {
                 const data = new Int16Array(size);
                 const sd = src.data;
@@ -210,7 +211,7 @@ class AudioFrameImpl<
                 for (let i = 0; i !== size; ++i, s += stride) {
                     data[i] = sd[s];
                 }
-                return chan.L16 = { channel, rate: src.rate, format: src.format, data };
+                return chan.L16 = { channel, channelId: offs, rate: src.rate, format: src.format, data };
             }
         }
     }

@@ -19,6 +19,8 @@ export type Duration = `PT${number}S`; // ISO8601 duration in seconds, where 'nu
 
 export type MediaChannel = 'external' | 'internal';
 
+export type MediaChannelId = 0 | 1;
+
 export type MediaChannels = MediaChannel[];
 
 export type MediaType = 'audio';

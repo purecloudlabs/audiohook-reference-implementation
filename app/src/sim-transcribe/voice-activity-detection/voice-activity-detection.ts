@@ -2,9 +2,10 @@ import ByteBuffer from 'bytebuffer';
 import { VoiceEvent } from './voice-event';
 import { EventType } from './event-type';
 import { EnergyCalculator } from './energy-calculator';
+import { MediaChannelId } from '../../../audiohook';
 
 export class VoiceActivityDetector {
-
+    private channelId: MediaChannelId;
     private audioBytesPerSec = 8000;
     private bytesPer100MilliSec: number = this.audioBytesPerSec / 10;
     private currentSegmentStartIndex = 0;
@@ -16,6 +17,14 @@ export class VoiceActivityDetector {
     private silenceEventsCounter = 0;
     private startPos = -1;
     private segmentShorterThanMinimum: ByteBuffer | null = null;
+
+    constructor(channelId: MediaChannelId) {
+        this.channelId = channelId;
+    }
+
+    get getChannelId(): MediaChannelId {
+        return this.channelId;
+    }
 
     detectVoiceActivity(segmentBuffer: ByteBuffer): VoiceEvent[] {
         const voiceEvents: VoiceEvent[] = [];

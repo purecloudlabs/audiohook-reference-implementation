@@ -2,7 +2,6 @@ import {
     OpenHandler,
     ServerSession as Session,
     MediaSelector,
-    MediaChannel,
     MediaDataFrame,
     CloseHandler,
     EventEntityTranscript,
@@ -40,8 +39,8 @@ export const VTSupportedLanguagesLowercase = VTSupportedLanguages.map((item) => 
 
 export class SimulatedTranscripts {
 
-    private vadInternal: VoiceActivityDetector;
-    private vadExternal: VoiceActivityDetector;
+    private vadLeft: VoiceActivityDetector;
+    private vadRight: VoiceActivityDetector;
     private vadPositionMs: StreamDuration = StreamDuration.zero;
     private language: LanguageCode;
 
@@ -60,21 +59,21 @@ export class SimulatedTranscripts {
         return stereo;
     };
 
-    private handleChannelData = (buffer: ByteBuffer, vad: VoiceActivityDetector, channel: MediaChannel, entities: EventEntityDataTranscript[]) => {
+    private handleChannelData = (buffer: ByteBuffer, vad: VoiceActivityDetector, entities: EventEntityDataTranscript[]) => {
         const events: VoiceEvent[] = vad.detectVoiceActivity(buffer);
         events.forEach(event => {
-            const transcript = makeTranscript(channel, event, this.language, this.vadPositionMs);
+            const transcript = makeTranscript(vad.getChannelId, event, this.language, this.vadPositionMs);
             if (transcript) {
                 entities.push(transcript);
             }
         });
     };
     
-    private handleChannelClose = (vad: VoiceActivityDetector, channel: MediaChannel, entities: EventEntityDataTranscript[]) => {
+    private handleChannelClose = (vad: VoiceActivityDetector, entities: EventEntityDataTranscript[]) => {
         if (vad != null) {
             const events: VoiceEvent[] = vad.notifyEndOfStream();
             events.forEach(event => {
-                const transcript = makeTranscript(channel, event, this.language, this.vadPositionMs);
+                const transcript = makeTranscript(vad.getChannelId, event, this.language, this.vadPositionMs);
                 if (transcript) {
                     entities.push(transcript);
                 }
@@ -85,20 +84,14 @@ export class SimulatedTranscripts {
     private closeAudio = (session: Session) => {
         const entities: EventEntityDataTranscript[] = [];
         if (session.selectedMedia?.channels.length == 2) {
-            this.handleChannelClose(this.vadExternal, 'external', entities);
-            this.handleChannelClose(this.vadInternal, 'internal', entities);
+            this.handleChannelClose(this.vadLeft, entities);
+            this.handleChannelClose(this.vadRight, entities);
         } else if (session.selectedMedia?.channels.length == 1) {
-            if (session.selectedMedia.channels[0] == 'external') {
-                this.handleChannelClose(this.vadExternal, 'external', entities);
-            } else {
-                this.handleChannelClose(this.vadInternal, 'internal', entities);
-            }
+            this.handleChannelClose(this.vadLeft, entities);
         } else {
             throw new Error('No Channel present');
         }
         this.sendEvent(session, entities);
-        // vadInternal = new VoiceActivityDetector();
-        // vadExternal = new VoiceActivityDetector();
     };
     
     private updateLanguage = (session: Session) => {
@@ -112,8 +105,8 @@ export class SimulatedTranscripts {
             session.logger.info(`Updating language to '${session.language}'`);
             this.language = session.language;
             this.vadPositionMs = session.position;
-            this.vadInternal = new VoiceActivityDetector();
-            this.vadExternal = new VoiceActivityDetector();
+            this.vadLeft = new VoiceActivityDetector(0);
+            this.vadRight = new VoiceActivityDetector(1);
         }
     };
     
@@ -125,15 +118,15 @@ export class SimulatedTranscripts {
     
             const channelData = new Map();
             frame.getChannelViews().forEach(channel => {
-                channelData.set(channel.channel, channel.data);
+                channelData.set(channel.channelId, channel.data);
             });
     
             const entities: EventEntityDataTranscript[] = [];
-            if (channelData.get('external') != null) {
-                this.handleChannelData(ByteBuffer.wrap(channelData.get('external')), this.vadExternal, 'external', entities);
+            if (channelData.get(0) != null) {
+                this.handleChannelData(ByteBuffer.wrap(channelData.get(0)), this.vadLeft, entities);
             }
-            if (channelData.get('internal') != null) {
-                this.handleChannelData(ByteBuffer.wrap(channelData.get('internal')), this.vadInternal, 'internal', entities);
+            if (channelData.get(1) != null) {
+                this.handleChannelData(ByteBuffer.wrap(channelData.get(1)), this.vadRight, entities);
             }
             this.sendEvent(session, entities);
         };

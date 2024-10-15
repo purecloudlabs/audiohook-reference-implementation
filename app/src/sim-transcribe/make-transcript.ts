@@ -1,4 +1,13 @@
-import { EventEntityDataTranscript, MediaChannel, TranscriptAlternative, TranscriptInterpretationType, TranscriptInterpretation, TranscriptToken, TranscriptTokenType, LanguageCode } from '../../audiohook/src/protocol';
+import {
+    EventEntityDataTranscript,
+    MediaChannelId,
+    TranscriptAlternative,
+    TranscriptInterpretationType,
+    TranscriptInterpretation,
+    TranscriptToken,
+    TranscriptTokenType,
+    LanguageCode
+} from '../../audiohook/src/protocol';
 import { VoiceEvent } from './voice-activity-detection/voice-event';
 import { v4 as uuid } from 'uuid';
 import { StreamDuration } from '../../audiohook';
@@ -152,7 +161,7 @@ const makeInterpretation = (transcriptInterpretationType: TranscriptInterpretati
 
 };
 
-export const makeTranscript = (channel: MediaChannel, voiceEvent: VoiceEvent, language: LanguageCode, vadPositionMs: StreamDuration) => {
+export const makeTranscript = (channelId: MediaChannelId, voiceEvent: VoiceEvent, language: LanguageCode, vadPositionMs: StreamDuration) => {
     const eventStartPositionMs: StreamDuration = vadPositionMs.withAddedMilliseconds(secondsToMilli(voiceEvent.getStartTime()));
     const eventEndPositionMs: StreamDuration = vadPositionMs.withAddedMilliseconds(secondsToMilli(voiceEvent.getEndTime()));
     const durationMs: StreamDuration = StreamDuration.fromMilliseconds(eventEndPositionMs.milliseconds - eventStartPositionMs.milliseconds);
@@ -175,7 +184,7 @@ export const makeTranscript = (channel: MediaChannel, voiceEvent: VoiceEvent, la
     if (transcriptAlternative.interpretations.length > 0) {
         const transcript: EventEntityDataTranscript = {
             id: uuid(),
-            channel: channel,
+            channelId: channelId,
             isFinal: true,
             offset: eventStartPositionMs.asDuration(),
             duration: durationMs.asDuration(),
